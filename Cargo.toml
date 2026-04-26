@@ -12,6 +12,15 @@ edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
 
+# cargo-binstall metadata. The release.yml workflow uploads
+# `zellij-{target}.tar.gz` containing a single top-level `zellij` binary
+# for each tag pushed as `v*.*.*`. Override the default crates.io-based
+# resolution so binstall fetches our fork's GitHub Release directly.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/zellij-{ target }.tar.gz"
+bin-dir = "{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
@@ -71,7 +80,11 @@ members = [
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/zellij-org/zellij"
-version = "0.45.0"
+# Fork build metadata (`+dave.N`). Semver-equivalent to upstream
+# 0.45.0 so internal path deps (`version = "0.45.0"`) keep matching.
+# Bump the trailing N for each fork release; reset and rebase when
+# upstream cuts a new version.
+version = "0.45.0+dave.1"
 # NOTE: When updating this, modify `channel` in `rust-toolchain.toml` accordingly
 rust-version = "1.92"
 
