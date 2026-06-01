@@ -7,13 +7,13 @@ Sync this fork. Read CLAUDE.md first if you haven't — it explains the branch m
 
 Branches:
 - local-only: `local-tweaks`
-- feature: `osc9-777`, `osc-1337`, `osc4-prefetch`, `active-pane-dim`
+- feature: `osc9-777`, `osc-1337`, `osc4-prefetch`, `active-pane-dim`, `window-dim`
 
 ## Steps
 
 1. `git fetch upstream`
 
-2. Rebase each branch onto `upstream/main`. For each of `local-tweaks`, `osc9-777`, `osc-1337`, `osc4-prefetch`, `active-pane-dim`:
+2. Rebase each branch onto `upstream/main`. For each of `local-tweaks`, `osc9-777`, `osc-1337`, `osc4-prefetch`, `active-pane-dim`, `window-dim` (rebase `window-dim` last — it sits on top of `active-pane-dim`):
    - `git checkout <branch>`
    - `git rebase upstream/main`
    - If conflict: stop and report. Do not resolve on your own.
@@ -29,6 +29,7 @@ Branches:
    - `git merge --no-ff osc-1337`
    - `git merge --no-ff osc4-prefetch`
    - `git merge --no-ff active-pane-dim`
+   - `git merge --no-ff window-dim`
    - If a merge conflict appears: rerere may have auto-resolved it (check `git status`). If unresolved, stop and report.
    - `git push origin main --force-with-lease`
 
