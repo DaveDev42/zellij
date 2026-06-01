@@ -2673,6 +2673,40 @@ impl Options {
             .map(|(string, _entry)| PathBuf::from(string));
         let pane_frames =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "pane_frames").map(|(v, _)| v);
+        let inactive_pane_hsb = match kdl_options.get("inactive_pane_hsb") {
+            Some(node) => {
+                let mut channels = kdl_entries_as_i64!(node);
+                let invalid = |node: &kdl::KdlNode| {
+                    ConfigError::new_kdl_error(
+                        "inactive_pane_hsb expects three integer multipliers: \
+                         hue (0-100) saturation (0-100) brightness (0-100)"
+                            .into(),
+                        node.span().offset(),
+                        node.span().len(),
+                    )
+                };
+                let hue = channels
+                    .next()
+                    .flatten()
+                    .filter(|h| (0..=100).contains(h))
+                    .ok_or_else(|| invalid(node))? as u16;
+                let saturation = channels
+                    .next()
+                    .flatten()
+                    .filter(|s| (0..=100).contains(s))
+                    .ok_or_else(|| invalid(node))? as u8;
+                let brightness = channels
+                    .next()
+                    .flatten()
+                    .filter(|b| (0..=100).contains(b))
+                    .ok_or_else(|| invalid(node))? as u8;
+                if channels.next().is_some() {
+                    return Err(invalid(node));
+                }
+                Some((hue, saturation, brightness))
+            },
+            None => None,
+        };
         let auto_layout =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "auto_layout").map(|(v, _)| v);
         let theme = kdl_property_first_arg_as_string_or_error!(kdl_options, "theme")
@@ -2838,6 +2872,7 @@ impl Options {
             theme_dir,
             mouse_mode,
             pane_frames,
+            inactive_pane_hsb,
             mirror_session,
             on_force_close,
             scroll_buffer_size,
@@ -3243,6 +3278,38 @@ impl Options {
             Some(node)
         } else if add_comments {
             let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn inactive_pane_hsb_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Dim inactive panes by multiplying their colors in HSB space.",
+            "// Three integer multipliers: hue (0-100) saturation (0-100) brightness (0-100).",
+            "// Lets the focused pane stand out with pane_frames off. Off by default.",
+            "// Example: inactive_pane_hsb 100 85 60",
+            "// ",
+        );
+
+        let create_node = |(hue, saturation, brightness): (u16, u8, u8)| -> KdlNode {
+            let mut node = KdlNode::new("inactive_pane_hsb");
+            node.push(KdlValue::Base10(hue as i64));
+            node.push(KdlValue::Base10(saturation as i64));
+            node.push(KdlValue::Base10(brightness as i64));
+            node
+        };
+        if let Some(inactive_pane_hsb) = self.inactive_pane_hsb {
+            let mut node = create_node(inactive_pane_hsb);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node((100, 85, 60));
             node.set_leading(format!("{}\n// ", comment_text));
             Some(node)
         } else {
@@ -4284,6 +4351,9 @@ impl Options {
         }
         if let Some(pane_frames) = self.pane_frames_to_kdl(add_comments) {
             nodes.push(pane_frames);
+        }
+        if let Some(inactive_pane_hsb) = self.inactive_pane_hsb_to_kdl(add_comments) {
+            nodes.push(inactive_pane_hsb);
         }
         if let Some(mirror_session) = self.mirror_session_to_kdl(add_comments) {
             nodes.push(mirror_session);
@@ -7252,4 +7322,32 @@ fn osc8_hyperlinks_config_parsing() {
     let serialized = config.to_string(false);
     let deserialized = Config::from_kdl(&serialized, None).unwrap();
     assert_eq!(deserialized.options.osc8_hyperlinks, Some(true));
+}
+
+#[test]
+fn inactive_pane_hsb_config_parsing() {
+    // Absent by default (feature off).
+    let config = Config::from_kdl("", None).unwrap();
+    assert_eq!(config.options.inactive_pane_hsb, None);
+
+    // Three integer multipliers: hue saturation brightness.
+    let config_with_hsb = r#"
+        inactive_pane_hsb 100 85 60
+    "#;
+    let config = Config::from_kdl(config_with_hsb, None).unwrap();
+    assert_eq!(config.options.inactive_pane_hsb, Some((100, 85, 60)));
+
+    // Serialization roundtrip preserves the triple.
+    let serialized = config.to_string(false);
+    let deserialized = Config::from_kdl(&serialized, None).unwrap();
+    assert_eq!(deserialized.options.inactive_pane_hsb, Some((100, 85, 60)));
+
+    // Out-of-range values are rejected. Hue is constrained to 0-100 (identity at 100),
+    // matching the saturation/brightness axes.
+    assert!(Config::from_kdl("inactive_pane_hsb 101 85 60\n", None).is_err());
+    assert!(Config::from_kdl("inactive_pane_hsb 400 85 60\n", None).is_err());
+    assert!(Config::from_kdl("inactive_pane_hsb 100 200 60\n", None).is_err());
+
+    // Missing channels are rejected.
+    assert!(Config::from_kdl("inactive_pane_hsb 100 85\n", None).is_err());
 }

@@ -764,6 +764,8 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             theme_dir: options.theme_dir.map(std::path::PathBuf::from),
             mouse_mode: options.mouse_mode,
             pane_frames: options.pane_frames,
+            // Config-only render concern; not carried over the protobuf IPC boundary.
+            inactive_pane_hsb: None,
             mirror_session: options.mirror_session,
             on_force_close: options
                 .on_force_close

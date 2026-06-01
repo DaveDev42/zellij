@@ -1376,6 +1376,12 @@ pub struct Style {
     pub colors: Styling,
     pub rounded_corners: bool,
     pub hide_session_name: bool,
+    /// Per-axis HSB multiplier applied to inactive panes' cell backgrounds so
+    /// the active pane stands out without any frame. Stored as integer percent
+    /// `(hue, saturation, brightness)` — e.g. `(100, 85, 60)` keeps the hue,
+    /// desaturates to 85% and darkens to 60%. `None` disables dimming entirely.
+    /// Integer percent (not `f32`) keeps `Style: Eq + Hash`.
+    pub inactive_pane_hsb: Option<(u16, u8, u8)>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -1772,6 +1778,9 @@ impl ModeInfo {
     }
     pub fn update_hide_session_name(&mut self, hide_session_name: bool) {
         self.style.hide_session_name = hide_session_name;
+    }
+    pub fn update_inactive_pane_hsb(&mut self, inactive_pane_hsb: Option<(u16, u8, u8)>) {
+        self.style.inactive_pane_hsb = inactive_pane_hsb;
     }
     pub fn change_to_default_mode(&mut self) {
         if let Some(base_mode) = self.base_mode {

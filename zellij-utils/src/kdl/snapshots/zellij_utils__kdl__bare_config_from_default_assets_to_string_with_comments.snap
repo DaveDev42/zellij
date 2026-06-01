@@ -358,6 +358,13 @@ web_client {
 // 
 // pane_frames false
  
+// Dim inactive panes by multiplying their colors in HSB space.
+// Three integer multipliers: hue (0-100) saturation (0-100) brightness (0-100).
+// Lets the focused pane stand out with pane_frames off. Off by default.
+// Example: inactive_pane_hsb 100 85 60
+// 
+// inactive_pane_hsb 100 85 60
+ 
 // When attaching to an existing session with other users,
 // should the session be mirrored (true)
 // or should each user have their own cursor (false)
