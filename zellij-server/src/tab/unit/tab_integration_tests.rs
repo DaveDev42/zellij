@@ -254,6 +254,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         draw_pane_frames,
         auto_layout,
         connected_clients,
+        Rc::new(RefCell::new(std::collections::HashSet::new())), // unfocused_clients (fork-only window dim)
         session_is_mirrored,
         Some(client_id),
         copy_options,
@@ -341,6 +342,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
         draw_pane_frames,
         auto_layout,
         connected_clients,
+        Rc::new(RefCell::new(std::collections::HashSet::new())), // unfocused_clients (fork-only window dim)
         session_is_mirrored,
         Some(client_id),
         copy_options,
@@ -443,6 +445,7 @@ fn create_new_tab_with_swap_layouts(
         draw_pane_frames,
         auto_layout,
         connected_clients,
+        Rc::new(RefCell::new(std::collections::HashSet::new())), // unfocused_clients (fork-only window dim)
         session_is_mirrored,
         Some(client_id),
         copy_options,
@@ -546,6 +549,7 @@ fn create_new_tab_with_os_api(
         draw_pane_frames,
         auto_layout,
         connected_clients,
+        Rc::new(RefCell::new(std::collections::HashSet::new())), // unfocused_clients (fork-only window dim)
         session_is_mirrored,
         Some(client_id),
         copy_options,
@@ -635,6 +639,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         draw_pane_frames,
         auto_layout,
         connected_clients,
+        Rc::new(RefCell::new(std::collections::HashSet::new())), // unfocused_clients (fork-only window dim)
         session_is_mirrored,
         Some(client_id),
         copy_options,
@@ -738,6 +743,7 @@ fn create_new_tab_with_mock_pty_writer(
         draw_pane_frames,
         auto_layout,
         connected_clients,
+        Rc::new(RefCell::new(std::collections::HashSet::new())), // unfocused_clients (fork-only window dim)
         session_is_mirrored,
         Some(client_id),
         copy_options,
@@ -832,6 +838,7 @@ fn create_new_tab_with_sixel_support(
         draw_pane_frames,
         auto_layout,
         connected_clients,
+        Rc::new(RefCell::new(std::collections::HashSet::new())), // unfocused_clients (fork-only window dim)
         session_is_mirrored,
         Some(client_id),
         copy_options,
@@ -12539,6 +12546,7 @@ fn create_new_tab_with_plugin_receiver(
         draw_pane_frames,
         auto_layout,
         connected_clients,
+        Rc::new(RefCell::new(std::collections::HashSet::new())), // unfocused_clients (fork-only window dim)
         session_is_mirrored,
         Some(client_id),
         copy_options,
@@ -14323,6 +14331,7 @@ fn create_new_tab_with_server_receiver(
         true, // draw_pane_frames
         true, // auto_layout
         connected_clients,
+        Rc::new(RefCell::new(std::collections::HashSet::new())), // unfocused_clients (fork-only window dim)
         true, // session_is_mirrored
         Some(client_id),
         copy_options,

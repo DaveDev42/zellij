@@ -195,6 +195,7 @@ fn create_layout_applier_fixtures(
         viewport.clone(),
         connected_clients_set.clone(),
         connected_clients.clone(),
+        Rc::new(RefCell::new(HashSet::new())), // unfocused_clients (fork-only window dim)
         mode_info.clone(),
         character_cell_size.clone(),
         stacked_resize,
@@ -212,6 +213,7 @@ fn create_layout_applier_fixtures(
         viewport.clone(),
         connected_clients_set,
         connected_clients.clone(),
+        Rc::new(RefCell::new(HashSet::new())), // unfocused_clients (fork-only window dim)
         mode_info,
         character_cell_size.clone(),
         session_is_mirrored,
@@ -325,6 +327,7 @@ fn create_layout_applier_fixtures_with_receivers(
         viewport.clone(),
         connected_clients_set.clone(),
         connected_clients.clone(),
+        Rc::new(RefCell::new(HashSet::new())), // unfocused_clients (fork-only window dim)
         mode_info.clone(),
         character_cell_size.clone(),
         stacked_resize,
@@ -342,6 +345,7 @@ fn create_layout_applier_fixtures_with_receivers(
         viewport.clone(),
         connected_clients_set,
         connected_clients.clone(),
+        Rc::new(RefCell::new(HashSet::new())), // unfocused_clients (fork-only window dim)
         mode_info,
         character_cell_size.clone(),
         session_is_mirrored,

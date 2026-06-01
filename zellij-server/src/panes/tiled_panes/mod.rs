@@ -59,6 +59,9 @@ pub struct TiledPanes {
     viewport: Rc<RefCell<Viewport>>,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
     connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
+    /// Fork-only: clients whose host-terminal OS window is unfocused. Shared
+    /// from `Screen`; read in `render` to dim every pane for those clients.
+    unfocused_clients: Rc<RefCell<HashSet<ClientId>>>,
     mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     stacked_resize: Rc<RefCell<bool>>,
@@ -83,6 +86,7 @@ impl TiledPanes {
         viewport: Rc<RefCell<Viewport>>,
         connected_clients: Rc<RefCell<HashSet<ClientId>>>,
         connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
+        unfocused_clients: Rc<RefCell<HashSet<ClientId>>>, // fork-only: window-level dim
         mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         stacked_resize: Rc<RefCell<bool>>,
@@ -99,6 +103,7 @@ impl TiledPanes {
             viewport,
             connected_clients,
             connected_clients_in_app,
+            unfocused_clients,
             mode_info,
             character_cell_size,
             stacked_resize,
@@ -1025,6 +1030,7 @@ impl TiledPanes {
         }
 
         let connected_clients: Vec<ClientId> = connected_clients.into_iter().collect();
+        let unfocused_clients: HashSet<ClientId> = { self.unfocused_clients.borrow().clone() };
         let multiple_users_exist_in_session = { self.connected_clients_in_app.borrow().len() > 1 };
         let mut client_id_to_boundaries: HashMap<ClientId, Boundaries> = HashMap::new();
         let active_panes = if floating_panes_are_visible {
@@ -1113,6 +1119,7 @@ impl TiledPanes {
                     &mouse_hover_pane_id,
                     current_pane_group.clone(),
                     show_help_text,
+                    &unfocused_clients,
                 );
                 for client_id in &connected_clients {
                     let client_mode = self
@@ -1128,7 +1135,11 @@ impl TiledPanes {
                     // render to all clients (fast path, below), but when inactive-pane
                     // dimming is enabled the dim is per-client (a pane inactive for client
                     // A may be active for client B), so we render them per-client here too.
-                    let render_terminal_per_client = self.style.inactive_pane_hsb.is_some();
+                    // Window-level dim is likewise per-client (one window unfocused while
+                    // another is focused), so force per-client whenever any client is in
+                    // the unfocused set, even though inactive_pane_hsb is normally also on.
+                    let render_terminal_per_client =
+                        self.style.inactive_pane_hsb.is_some() || !unfocused_clients.is_empty();
                     let render_per_client = match kind {
                         PaneId::Plugin(..) => true,
                         PaneId::Terminal(..) => render_terminal_per_client,

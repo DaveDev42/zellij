@@ -171,6 +171,13 @@ pub enum ClientToServerMsg {
     HostTerminalThemeChanged {
         mode: HostTerminalThemeMode,
     },
+    /// Fork-only: the host terminal (WezTerm) reported whether its OS window
+    /// is focused, via OSC `7777;ZWF;0|1`. Each WezTerm window runs its own
+    /// zellij server, so the server uses this to dim its whole content while
+    /// the window is in the background. `focused = false` → dim everything.
+    WindowFocusChanged {
+        focused: bool,
+    },
 }
 
 // Types of messages sent from the server to the client

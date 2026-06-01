@@ -25,6 +25,7 @@ message ClientToServerMsg {
     DesktopNotificationResponseMsg desktop_notification_response = 18;
     ForwardedReplyFromHostMsg forwarded_reply_from_host = 19;
     HostTerminalThemeChangedMsg host_terminal_theme_changed = 20;
+    WindowFocusChangedMsg window_focus_changed = 21;
   }
 }
 
@@ -119,6 +120,10 @@ message ForwardedReplyFromHostMsg {
 
 message HostTerminalThemeChangedMsg {
   HostTerminalThemeIndication mode = 1;
+}
+
+message WindowFocusChangedMsg {
+  bool focused = 1;
 }
 
 enum HostTerminalThemeIndication {

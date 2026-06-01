@@ -735,6 +735,7 @@ impl Tab {
         draw_pane_frames: bool,
         auto_layout: bool,
         connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
+        unfocused_clients: Rc<RefCell<HashSet<ClientId>>>, // fork-only: window-level dim
         session_is_mirrored: bool,
         client_id: Option<ClientId>,
         copy_options: CopyOptions,
@@ -780,6 +781,7 @@ impl Tab {
             viewport.clone(),
             connected_clients.clone(),
             connected_clients_in_app.clone(),
+            unfocused_clients.clone(),
             mode_info.clone(),
             character_cell_size.clone(),
             stacked_resize.clone(),
@@ -795,6 +797,7 @@ impl Tab {
             viewport.clone(),
             connected_clients.clone(),
             connected_clients_in_app.clone(),
+            unfocused_clients.clone(),
             mode_info.clone(),
             character_cell_size.clone(),
             session_is_mirrored,
