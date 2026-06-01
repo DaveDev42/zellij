@@ -63,6 +63,10 @@ pub struct PaneContentsAndUi<'a> {
     mouse_is_hovering_over_pane_for_clients: HashSet<ClientId>,
     current_pane_group: HashMap<ClientId, Vec<PaneId>>,
     show_help_text: bool,
+    /// Fork-only: clients whose host-terminal OS window is unfocused. For
+    /// these clients every pane is dimmed (window-level dim), on top of the
+    /// existing inactive-pane dim. See `render_pane_contents_for_client`.
+    unfocused_clients: HashSet<ClientId>,
 }
 
 impl<'a> PaneContentsAndUi<'a> {
@@ -79,6 +83,7 @@ impl<'a> PaneContentsAndUi<'a> {
         mouse_hover_pane_id: &HashMap<ClientId, PaneId>,
         current_pane_group: HashMap<ClientId, Vec<PaneId>>,
         show_help_text: bool,
+        unfocused_clients: &HashSet<ClientId>,
     ) -> Self {
         let mut focused_clients: Vec<ClientId> = active_panes
             .iter()
@@ -109,6 +114,7 @@ impl<'a> PaneContentsAndUi<'a> {
             mouse_is_hovering_over_pane_for_clients,
             current_pane_group,
             show_help_text,
+            unfocused_clients: unfocused_clients.clone(),
         }
     }
     pub fn render_pane_contents_to_multiple_clients(
@@ -178,7 +184,12 @@ impl<'a> PaneContentsAndUi<'a> {
         {
             if let Some(inactive_pane_hsb) = self.style.inactive_pane_hsb {
                 let pane_is_focused = self.focused_clients.contains(&client_id);
-                if !pane_is_focused && !self.is_ui_fixture() {
+                // Window-level dim: if this client's OS window is unfocused,
+                // dim every pane it sees (active pane included). OR'd with the
+                // inactive-pane dim so a pane that is both still gets dimmed
+                // exactly once.
+                let window_unfocused = self.unfocused_clients.contains(&client_id);
+                if (!pane_is_focused || window_unfocused) && !self.is_ui_fixture() {
                     for chunk in character_chunks.iter_mut() {
                         dim_character_chunk(chunk, inactive_pane_hsb);
                     }

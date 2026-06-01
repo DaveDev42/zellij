@@ -194,6 +194,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         draw_pane_frames,
         auto_layout,
         connected_clients,
+        Rc::new(RefCell::new(std::collections::HashSet::new())), // unfocused_clients (fork-only window dim)
         session_is_mirrored,
         Some(client_id),
         copy_options,
@@ -280,6 +281,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         draw_pane_frames,
         auto_layout,
         connected_clients,
+        Rc::new(RefCell::new(std::collections::HashSet::new())), // unfocused_clients (fork-only window dim)
         session_is_mirrored,
         Some(client_id),
         copy_options,
@@ -372,6 +374,7 @@ fn create_new_tab_with_cell_size(
         draw_pane_frames,
         auto_layout,
         connected_clients,
+        Rc::new(RefCell::new(std::collections::HashSet::new())), // unfocused_clients (fork-only window dim)
         session_is_mirrored,
         Some(client_id),
         copy_options,

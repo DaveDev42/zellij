@@ -14,7 +14,7 @@ use crate::{
         ServerToClientMsg as ProtoServerToClientMsg, StartWebServerMsg, SubscribeToPaneRendersMsg,
         SubscribedPaneClosedMsg, SwitchSessionMsg, TabMetadata as ProtoTabMetadata,
         TerminalPixelDimensionsMsg, TerminalResizeMsg, UnblockCliPipeInputMsg,
-        UnblockInputThreadMsg, WebServerStartedMsg,
+        UnblockInputThreadMsg, WebServerStartedMsg, WindowFocusChangedMsg,
     },
     data::{HostTerminalThemeMode, InputMode, PaneId},
     errors::prelude::*,
@@ -145,6 +145,11 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
                         mode: proto_mode as i32,
                     },
                 )
+            },
+            ClientToServerMsg::WindowFocusChanged { focused } => {
+                client_to_server_msg::Message::WindowFocusChanged(WindowFocusChangedMsg {
+                    focused,
+                })
             },
         };
 
@@ -285,6 +290,11 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                     .ok_or_else(|| anyhow!("Unknown HostTerminalThemeIndication: {}", msg.mode))?;
                 Ok(ClientToServerMsg::HostTerminalThemeChanged {
                     mode: proto_mode.into(),
+                })
+            },
+            Some(client_to_server_msg::Message::WindowFocusChanged(msg)) => {
+                Ok(ClientToServerMsg::WindowFocusChanged {
+                    focused: msg.focused,
                 })
             },
             None => Err(anyhow!("Empty ClientToServerMsg message")),
