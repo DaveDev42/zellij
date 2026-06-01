@@ -87,6 +87,13 @@ pub struct Options {
     #[serde(default)]
     /// Set display of the pane frames (true or false)
     pub pane_frames: Option<bool>,
+    #[clap(skip)]
+    #[serde(default)]
+    /// Dim inactive panes by this per-axis HSB multiplier, as integer percent
+    /// `(hue, saturation, brightness)` — e.g. `(100, 85, 60)`. Lets the active
+    /// pane stand out with `pane_frames` off. Config-only (no CLI flag) because
+    /// it's a tuple. `None` (the default) disables dimming.
+    pub inactive_pane_hsb: Option<(u16, u8, u8)>,
     #[clap(long, value_parser)]
     #[serde(default)]
     /// Mirror session when multiple users are connected (true or false)
@@ -412,6 +419,7 @@ impl Options {
     pub fn merge(&self, other: Options) -> Options {
         let mouse_mode = other.mouse_mode.or(self.mouse_mode);
         let pane_frames = other.pane_frames.or(self.pane_frames);
+        let inactive_pane_hsb = other.inactive_pane_hsb.or(self.inactive_pane_hsb);
         let auto_layout = other.auto_layout.or(self.auto_layout);
         let mirror_session = other.mirror_session.or(self.mirror_session);
         let simplified_ui = other.simplified_ui.or(self.simplified_ui);
@@ -518,6 +526,7 @@ impl Options {
             theme_dir,
             mouse_mode,
             pane_frames,
+            inactive_pane_hsb,
             mirror_session,
             on_force_close,
             scroll_buffer_size,
@@ -589,6 +598,7 @@ impl Options {
         let simplified_ui = merge_bool(other.simplified_ui, self.simplified_ui);
         let mouse_mode = merge_bool(other.mouse_mode, self.mouse_mode);
         let pane_frames = merge_bool(other.pane_frames, self.pane_frames);
+        let inactive_pane_hsb = other.inactive_pane_hsb.or(self.inactive_pane_hsb);
         let auto_layout = merge_bool(other.auto_layout, self.auto_layout);
         let mirror_session = merge_bool(other.mirror_session, self.mirror_session);
         let session_serialization =
@@ -702,6 +712,7 @@ impl Options {
             theme_dir,
             mouse_mode,
             pane_frames,
+            inactive_pane_hsb,
             mirror_session,
             on_force_close,
             scroll_buffer_size,

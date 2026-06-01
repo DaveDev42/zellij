@@ -948,6 +948,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             .unwrap_or_else(|| default_palette().into()),
                         rounded_corners: config.ui.pane_frames.rounded_corners,
                         hide_session_name: config.ui.pane_frames.hide_session_name,
+                        // `inactive_pane_hsb` is threaded onto the Style in
+                        // `screen_thread_main` (the canonical site); left at default here.
+                        inactive_pane_hsb: None,
                     },
                 };
 
@@ -1104,6 +1107,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             .unwrap_or_else(|| default_palette().into()),
                         rounded_corners: config.ui.pane_frames.rounded_corners,
                         hide_session_name: config.ui.pane_frames.hide_session_name,
+                        // `inactive_pane_hsb` is threaded onto the Style in
+                        // `screen_thread_main` (the canonical site); left at default here.
+                        inactive_pane_hsb: None,
                     },
                 };
 

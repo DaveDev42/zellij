@@ -5644,7 +5644,7 @@ fn find_already_running_panes(
 pub(crate) fn screen_thread_main(
     bus: Bus<ScreenInstruction>,
     max_panes: Option<usize>,
-    client_attributes: ClientAttributes,
+    mut client_attributes: ClientAttributes,
     config: Config,
     debug: bool,
     default_layout: Box<Layout>,
@@ -5677,6 +5677,9 @@ pub(crate) fn screen_thread_main(
     }
 
     let config_options = config.options;
+    // Carry the inactive-pane dim multiplier on the Style so it flows to every
+    // PaneContentsAndUi without threading a separate option through Tab/TiledPanes.
+    client_attributes.style.inactive_pane_hsb = config_options.inactive_pane_hsb;
     let arrow_fonts = !config_options.simplified_ui.unwrap_or_default();
     let draw_pane_frames = config_options.pane_frames.unwrap_or(true);
     let auto_layout = config_options.auto_layout.unwrap_or(true);
