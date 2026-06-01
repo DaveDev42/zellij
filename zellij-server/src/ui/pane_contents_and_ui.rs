@@ -1,4 +1,5 @@
-use crate::output::Output;
+use crate::output::{CharacterChunk, Output};
+use crate::panes::terminal_character::AnsiCode;
 use crate::panes::PaneId;
 use crate::tab::Pane;
 use crate::ui::boundaries::Boundaries;
@@ -7,6 +8,48 @@ use crate::ClientId;
 use std::collections::{HashMap, HashSet};
 use zellij_utils::data::{client_id_to_colors, InputMode, PaletteColor, Style};
 use zellij_utils::errors::prelude::*;
+use zellij_utils::input::layout::{Run, RunPluginLocation};
+use zellij_utils::shared::{apply_hsb, eightbit_to_rgb};
+
+/// Multiply a single color's HSB channels by `hsb` (integer percent: hue, saturation,
+/// brightness). `On`/`Reset`/`Underline` carry no concrete RGB and are left untouched;
+/// `NamedColor` is resolved against the static xterm-256 default table (via
+/// `eightbit_to_rgb`), not the user's configured terminal palette, so it dims too.
+fn dim_ansi_code(code: AnsiCode, hsb: (f32, f32, f32)) -> AnsiCode {
+    let rgb = match code {
+        AnsiCode::RgbCode(rgb) => Some(rgb),
+        AnsiCode::ColorIndex(idx) => Some(eightbit_to_rgb(idx)),
+        AnsiCode::NamedColor(named) => Some(eightbit_to_rgb(named as u8)),
+        AnsiCode::On | AnsiCode::Reset | AnsiCode::Underline(_) => None,
+    };
+    match rgb {
+        Some(rgb) => AnsiCode::RgbCode(apply_hsb(rgb, hsb)),
+        None => code,
+    }
+}
+
+fn dim_ansi_code_opt(code: Option<AnsiCode>, hsb: (f32, f32, f32)) -> Option<AnsiCode> {
+    code.map(|c| dim_ansi_code(c, hsb))
+}
+
+/// Subtract brightness/saturation from every cell of `chunk` so an inactive pane recedes.
+/// `hsb` is the configured `(hue%, saturation%, brightness%)` multiplier.
+fn dim_character_chunk(chunk: &mut CharacterChunk, hsb: (u16, u8, u8)) {
+    let hsb = (
+        hsb.0 as f32 / 100.0,
+        hsb.1 as f32 / 100.0,
+        hsb.2 as f32 / 100.0,
+    );
+    chunk.pane_default_fg = dim_ansi_code_opt(chunk.pane_default_fg, hsb);
+    chunk.pane_default_bg = dim_ansi_code_opt(chunk.pane_default_bg, hsb);
+    for t_character in chunk.terminal_characters.iter_mut() {
+        t_character.styles.update(|styles| {
+            styles.foreground = dim_ansi_code_opt(styles.foreground, hsb);
+            styles.background = dim_ansi_code_opt(styles.background, hsb);
+            styles.underline_color = dim_ansi_code_opt(styles.underline_color, hsb);
+        });
+    }
+}
 pub struct PaneContentsAndUi<'a> {
     pane: &'a mut Box<dyn Pane>,
     output: &'a mut Output,
@@ -110,14 +153,37 @@ impl<'a> PaneContentsAndUi<'a> {
         }
         Ok(())
     }
+    /// Whether this pane is a UI fixture (status-bar / tab-bar / compact-bar, or any
+    /// non-selectable plugin such as a file-located zjstatus) that must never be dimmed.
+    fn is_ui_fixture(&self) -> bool {
+        if let Some(Run::Plugin(run)) = self.pane.invoked_with() {
+            if let Some(run_plugin) = run.get_run_plugin() {
+                if let RunPluginLocation::Zellij(tag) = run_plugin.location {
+                    let tag = tag.to_string();
+                    if tag == "status-bar" || tag == "tab-bar" || tag == "compact-bar" {
+                        return true;
+                    }
+                }
+            }
+        }
+        !self.pane.selectable()
+    }
     pub fn render_pane_contents_for_client(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to render pane contents for client {client_id}");
 
-        if let Some((character_chunks, raw_vte_output, sixel_image_chunks)) = self
+        if let Some((mut character_chunks, raw_vte_output, sixel_image_chunks)) = self
             .pane
             .render(Some(client_id))
             .with_context(err_context)?
         {
+            if let Some(inactive_pane_hsb) = self.style.inactive_pane_hsb {
+                let pane_is_focused = self.focused_clients.contains(&client_id);
+                if !pane_is_focused && !self.is_ui_fixture() {
+                    for chunk in character_chunks.iter_mut() {
+                        dim_character_chunk(chunk, inactive_pane_hsb);
+                    }
+                }
+            }
             self.output
                 .add_character_chunks_to_client(client_id, character_chunks, self.z_index)
                 .with_context(err_context)?;

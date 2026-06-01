@@ -83,6 +83,9 @@ pub fn zellij_server_listener(
                             colors: palette,
                             rounded_corners: config.ui.pane_frames.rounded_corners,
                             hide_session_name: config.ui.pane_frames.hide_session_name,
+                            // threaded onto the Style in screen_thread_main (the
+                            // canonical site); left at default here.
+                            inactive_pane_hsb: None,
                         },
                     };
 

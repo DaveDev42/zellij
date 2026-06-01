@@ -111,6 +111,78 @@ pub fn eightbit_to_rgb(c: u8) -> (u8, u8, u8) {
     Ansi256::new(c).as_rgb().into()
 }
 
+/// Convert an 8-bit-per-channel RGB triple to HSB (a.k.a. HSV).
+///
+/// Returns `(hue, saturation, brightness)` where `hue` is in `[0.0, 360.0)`
+/// degrees and `saturation`/`brightness` are in `[0.0, 1.0]`. Achromatic
+/// inputs (r == g == b) yield `hue == 0.0`, `saturation == 0.0`.
+pub fn rgb_to_hsb(r: u8, g: u8, b: u8) -> (f32, f32, f32) {
+    let r = r as f32 / 255.0;
+    let g = g as f32 / 255.0;
+    let b = b as f32 / 255.0;
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let delta = max - min;
+
+    let hue = if delta == 0.0 {
+        0.0
+    } else if max == r {
+        60.0 * (((g - b) / delta).rem_euclid(6.0))
+    } else if max == g {
+        60.0 * (((b - r) / delta) + 2.0)
+    } else {
+        60.0 * (((r - g) / delta) + 4.0)
+    };
+
+    let saturation = if max == 0.0 { 0.0 } else { delta / max };
+    (hue, saturation, max)
+}
+
+/// Convert an HSB (HSV) triple back to 8-bit-per-channel RGB.
+///
+/// `hue` is taken modulo 360; `saturation` and `brightness` are clamped to
+/// `[0.0, 1.0]`. Inverse of [`rgb_to_hsb`] up to rounding.
+pub fn hsb_to_rgb(hue: f32, saturation: f32, brightness: f32) -> (u8, u8, u8) {
+    let hue = hue.rem_euclid(360.0);
+    let saturation = saturation.clamp(0.0, 1.0);
+    let brightness = brightness.clamp(0.0, 1.0);
+
+    let c = brightness * saturation;
+    let x = c * (1.0 - (((hue / 60.0) % 2.0) - 1.0).abs());
+    let m = brightness - c;
+
+    let (r1, g1, b1) = match hue {
+        h if h < 60.0 => (c, x, 0.0),
+        h if h < 120.0 => (x, c, 0.0),
+        h if h < 180.0 => (0.0, c, x),
+        h if h < 240.0 => (0.0, x, c),
+        h if h < 300.0 => (x, 0.0, c),
+        _ => (c, 0.0, x),
+    };
+
+    let to_u8 = |v: f32| ((v + m) * 255.0).round().clamp(0.0, 255.0) as u8;
+    (to_u8(r1), to_u8(g1), to_u8(b1))
+}
+
+/// Apply a per-axis HSB multiplier to an RGB color, used to dim inactive
+/// panes without claiming any frame space.
+///
+/// `hsb` is `(hue_mul, saturation_mul, brightness_mul)`: each axis of the
+/// color's HSB representation is multiplied by the corresponding factor. This
+/// per-axis multiply is analogous to WezTerm's `inactive_pane_hsb`, but zellij
+/// encodes each axis as an integer percent at the config layer (100 = identity)
+/// whereas WezTerm uses floats (1.0 = identity); here the percents have already
+/// been converted to float multipliers. A typical dim is something like
+/// `(1.0, 0.85, 0.6)` — hue unchanged, slightly desaturated, noticeably
+/// darker. Multipliers `> 1.0` are allowed (saturation/brightness re-clamp on
+/// the way back to RGB).
+pub fn apply_hsb(rgb: (u8, u8, u8), hsb: (f32, f32, f32)) -> (u8, u8, u8) {
+    let (r, g, b) = rgb;
+    let (h, s, v) = rgb_to_hsb(r, g, b);
+    let (hm, sm, vm) = hsb;
+    hsb_to_rgb(h * hm, s * sm, v * vm)
+}
+
 pub fn default_palette() -> Palette {
     Palette {
         source: PaletteSource::Default,
@@ -225,4 +297,77 @@ pub fn parse_base_url(url: &str) -> Result<ServerAddress> {
         .ok_or_else(|| anyhow!("No port in URL"))?;
 
     Ok(ServerAddress { ip, port })
+}
+
+#[cfg(test)]
+mod hsb_tests {
+    use super::{apply_hsb, hsb_to_rgb, rgb_to_hsb};
+
+    fn assert_close(a: (u8, u8, u8), b: (u8, u8, u8)) {
+        // Allow ±1 per channel for f32 rounding through HSB and back.
+        for (x, y) in [(a.0, b.0), (a.1, b.1), (a.2, b.2)] {
+            assert!(
+                (x as i16 - y as i16).abs() <= 1,
+                "channel mismatch: {:?} vs {:?}",
+                a,
+                b
+            );
+        }
+    }
+
+    #[test]
+    fn rgb_hsb_roundtrip_primaries_and_grays() {
+        let samples = [
+            (0, 0, 0),
+            (255, 255, 255),
+            (255, 0, 0),
+            (0, 255, 0),
+            (0, 0, 255),
+            (255, 255, 0),
+            (0, 255, 255),
+            (255, 0, 255),
+            (128, 128, 128),
+            (18, 52, 86),
+            (200, 30, 90),
+        ];
+        for rgb in samples {
+            let (h, s, b) = rgb_to_hsb(rgb.0, rgb.1, rgb.2);
+            assert_close(hsb_to_rgb(h, s, b), rgb);
+        }
+    }
+
+    #[test]
+    fn achromatic_has_zero_hue_and_saturation() {
+        let (h, s, _b) = rgb_to_hsb(70, 70, 70);
+        assert_eq!(h, 0.0);
+        assert_eq!(s, 0.0);
+    }
+
+    #[test]
+    fn hsb_to_rgb_clamps_out_of_range() {
+        // Saturation/brightness above 1.0 and a hue past 360 must not panic
+        // and must stay within the 0..=255 channel range.
+        let (r, g, b) = hsb_to_rgb(540.0, 2.0, 5.0);
+        let _ = (r, g, b); // any u8 is in range by construction
+                           // brightness 0 => black regardless of hue/sat
+        assert_eq!(hsb_to_rgb(123.0, 0.9, 0.0), (0, 0, 0));
+    }
+
+    #[test]
+    fn apply_hsb_brightness_multiplier_darkens() {
+        // Halving brightness halves each channel of a pure gray.
+        assert_close(apply_hsb((200, 200, 200), (1.0, 1.0, 0.5)), (100, 100, 100));
+        // Identity multiplier returns the input unchanged.
+        assert_close(apply_hsb((10, 120, 240), (1.0, 1.0, 1.0)), (10, 120, 240));
+        // Brightness 0 => black for any input.
+        assert_close(apply_hsb((10, 120, 240), (1.0, 1.0, 0.0)), (0, 0, 0));
+    }
+
+    #[test]
+    fn apply_hsb_saturation_multiplier_desaturates_toward_gray() {
+        // Fully desaturating a saturated color collapses it onto its
+        // brightness gray (max channel preserved).
+        let out = apply_hsb((200, 30, 90), (1.0, 0.0, 1.0));
+        assert_close(out, (200, 200, 200));
+    }
 }
