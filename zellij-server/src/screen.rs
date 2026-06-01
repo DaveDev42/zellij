@@ -540,6 +540,13 @@ pub enum ScreenInstruction {
     /// `HostTerminalThemeChanged` plugin event, and per-pane DSR forwarding
     /// for panes that opted in via `CSI ? 2031 h`.
     HostTerminalThemeChanged(HostTerminalThemeMode),
+    /// Fork-only: the host terminal (WezTerm) reported whether its OS window
+    /// is focused (OSC `7777;ZWF;0|1`), keyed by the reporting client. Each
+    /// WezTerm window runs its own zellij server, so this is how a background
+    /// window's zellij learns to dim its whole content. `false` → add the
+    /// client to `unfocused_clients` and force a re-render so the dim applies;
+    /// `true` → remove it and re-render bright.
+    WindowFocusChange(ClientId, bool),
     /// Manual theme actions issued via the CLI (e.g. `zellij action set-dark-theme`)
     /// or a keybinding. They share the same convergence point as
     /// `HostTerminalThemeChanged`, but additionally surface a CLI-friendly error
@@ -1003,6 +1010,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::HostTerminalThemeChanged(..) => {
                 ScreenContext::HostTerminalThemeChanged
             },
+            ScreenInstruction::WindowFocusChange(..) => ScreenContext::WindowFocusChange,
             ScreenInstruction::SetDarkTheme(..) => ScreenContext::SetDarkTheme,
             ScreenInstruction::SetLightTheme(..) => ScreenContext::SetLightTheme,
             ScreenInstruction::ToggleTheme(..) => ScreenContext::ToggleTheme,
@@ -1466,6 +1474,18 @@ pub(crate) struct Screen {
     /// Resolved styling to apply when `host_terminal_theme_mode == Light`.
     /// `None` disables auto-switch. Refreshed on each reconfigure.
     host_theme_light_styling: Option<Styling>,
+    /// Fork-only: clients whose host-terminal OS window is currently
+    /// unfocused, as reported via OSC `7777;ZWF;0`. While a client is in
+    /// this set, *all* of its panes (active included) are dimmed at render
+    /// time — so a background WezTerm window's whole zellij content reads as
+    /// dim. Single-threaded screen loop, so a plain `HashSet` is fine.
+    /// Self-healing: any key input from a client removes it (the window a
+    /// user is typing into cannot be unfocused), covering lost OSC signals.
+    ///
+    /// Shared by `Rc<RefCell<…>>` down into each `Tab`'s tiled/floating panes
+    /// (the same vehicle as `connected_clients`) so the render layer reads it
+    /// without a new render-signature parameter.
+    unfocused_clients: Rc<RefCell<HashSet<ClientId>>>,
 }
 
 /// A pending forward waiting to be dispatched once the current in-flight
@@ -1622,6 +1642,7 @@ impl Screen {
             host_terminal_theme_mode: None,
             host_theme_dark_styling: None,
             host_theme_light_styling: None,
+            unfocused_clients: Rc::new(RefCell::new(HashSet::new())),
         }
     }
 
@@ -2942,6 +2963,7 @@ impl Screen {
             self.draw_pane_frames,
             self.auto_layout,
             self.connected_clients.clone(),
+            self.unfocused_clients.clone(),
             self.session_is_mirrored,
             client_id,
             self.copy_options.clone(),
@@ -4755,6 +4777,30 @@ impl Screen {
         self.render(None)?;
         Ok(())
     }
+    /// Fork-only: record whether `client_id`'s host-terminal OS window is
+    /// focused (OSC `7777;ZWF;0|1`). When unfocused, the client is added to
+    /// `unfocused_clients` so every pane it sees is dimmed at render time;
+    /// when focused, it is removed. Dedupes (no-op if the state is unchanged)
+    /// and force-renders the client's active tab, since the dim is computed
+    /// at render time and would otherwise stay stale until the next content
+    /// change (same render-gate lesson as the inactive-pane dim).
+    pub fn update_window_focus(&mut self, client_id: ClientId, focused: bool) -> Result<()> {
+        let changed = if focused {
+            self.unfocused_clients.borrow_mut().remove(&client_id)
+        } else {
+            self.unfocused_clients.borrow_mut().insert(client_id)
+        };
+        if !changed {
+            return Ok(());
+        }
+        // The dim is render-time, so a focus flip with no content change
+        // needs an explicit force-render to repaint the whole viewport.
+        if let Ok(tab) = self.get_active_tab_mut(client_id) {
+            tab.set_force_render();
+        }
+        self.render(None)?;
+        Ok(())
+    }
     /// Apply a manual host-terminal theme mode change requested via the CLI or a
     /// keybinding. Surfaces a clear error to the CLI if the auto-switch gate
     /// (both `theme_dark` and `theme_light` configured) is not satisfied;
@@ -6113,6 +6159,15 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                // Self-heal the window-focus dim: a client the user is
+                // typing into cannot be in an unfocused OS window, so if a
+                // focus-in OSC was ever dropped, this clears the stale dim.
+                if screen.unfocused_clients.borrow_mut().remove(&client_id) {
+                    if let Ok(tab) = screen.get_active_tab_mut(client_id) {
+                        tab.set_force_render();
+                    }
+                    screen.render(None)?;
+                }
                 if let Some(plugin_id) = keybind_intercepts.get(&client_id) {
                     if let Some(key_with_modifier) = key_with_modifier {
                         let _ = screen
@@ -7438,6 +7493,9 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::HostTerminalThemeChanged(mode) => {
                 screen.update_host_terminal_theme_mode(mode)?;
+            },
+            ScreenInstruction::WindowFocusChange(client_id, focused) => {
+                screen.update_window_focus(client_id, focused)?;
             },
             ScreenInstruction::SetDarkTheme(mut completion_tx) => {
                 screen.apply_manual_host_terminal_theme_mode(

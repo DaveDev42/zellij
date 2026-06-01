@@ -39,6 +39,9 @@ pub struct FloatingPanes {
     viewport: Rc<RefCell<Viewport>>,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
     connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
+    /// Fork-only: clients whose host-terminal OS window is unfocused. Shared
+    /// from `Screen`; read in `render` to dim every pane for those clients.
+    unfocused_clients: Rc<RefCell<HashSet<ClientId>>>,
     mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     default_mode_info: ModeInfo,
@@ -63,6 +66,7 @@ impl FloatingPanes {
         viewport: Rc<RefCell<Viewport>>,
         connected_clients: Rc<RefCell<HashSet<ClientId>>>,
         connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
+        unfocused_clients: Rc<RefCell<HashSet<ClientId>>>, // fork-only: window-level dim
         mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         session_is_mirrored: bool,
@@ -77,6 +81,7 @@ impl FloatingPanes {
             viewport,
             connected_clients,
             connected_clients_in_app,
+            unfocused_clients,
             mode_info,
             character_cell_size,
             session_is_mirrored,
@@ -394,6 +399,7 @@ impl FloatingPanes {
         }
 
         let connected_clients: Vec<ClientId> = connected_clients.into_iter().collect();
+        let unfocused_clients: HashSet<ClientId> = { self.unfocused_clients.borrow().clone() };
         let active_panes = if self.panes_are_visible() {
             self.active_panes.clone_active_panes()
         } else {
@@ -472,6 +478,7 @@ impl FloatingPanes {
                 mouse_hover_pane_id,
                 current_pane_group.clone(),
                 show_help_text,
+                &unfocused_clients,
             );
             for client_id in &connected_clients {
                 let client_mode = self
@@ -496,7 +503,9 @@ impl FloatingPanes {
                 // them per-client here too.
                 let render_per_client = match kind {
                     PaneId::Plugin(..) => true,
-                    PaneId::Terminal(..) => self.style.inactive_pane_hsb.is_some(),
+                    PaneId::Terminal(..) => {
+                        self.style.inactive_pane_hsb.is_some() || !unfocused_clients.is_empty()
+                    },
                 };
                 if render_per_client {
                     pane_contents_and_ui

@@ -315,6 +315,7 @@ pub enum ScreenContext {
     ForwardedReplyFromHost,
     ResumePaneAfterForward,
     HostTerminalThemeChanged,
+    WindowFocusChange,
     SetDarkTheme,
     SetLightTheme,
     ToggleTheme,
