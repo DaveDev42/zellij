@@ -277,13 +277,18 @@ fn build_startup_query_string() -> String {
     // <ESC>]11;?<ESC>\ => get background color
     // <ESC>]10;?<ESC>\ => get foreground color
     // <ESC>[?2026$p => get synchronised output mode
-    let mut query_string = String::from(
+    //
+    // Upstream zellij additionally prefetches the full 256-entry OSC 4
+    // palette here. We skip that: the 256 replies arrive as one large
+    // burst, and on WezTerm-over-ConPTY-over-WSL the parser can lose
+    // sync on chunk boundaries and leak fragments into the inner pane
+    // on session start. The PaletteRegister cache (screen.rs) is only
+    // consulted to short-circuit pane-issued `OSC 4;N;?` queries;
+    // misses fall through to `forward_host_query`, so on-demand fetch
+    // is functionally equivalent — only the round-trip latency on the
+    // first per-index query is paid. 256-color SGR rendering is
+    // unaffected (it does not consult this cache).
+    String::from(
         "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p",
-    );
-    // query colors
-    // eg. <ESC>]4;5;?<ESC>\ => query color register number 5
-    for i in 0..256 {
-        query_string.push_str(&format!("\u{1b}]4;{};?\u{1b}\u{5c}", i));
-    }
-    query_string
+    )
 }
