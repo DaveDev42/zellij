@@ -321,6 +321,10 @@ impl InputHandler {
                 self.os_input
                     .send_to_server(ClientToServerMsg::HostTerminalThemeChanged { mode });
             },
+            AnsiStdinInstruction::WindowFocusChanged(focused) => {
+                self.os_input
+                    .send_to_server(ClientToServerMsg::WindowFocusChanged { focused });
+            },
         }
     }
     fn handle_mouse_event(&mut self, mouse_event: &MouseEvent) {

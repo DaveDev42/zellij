@@ -61,6 +61,12 @@ pub enum HostReply {
     /// DSR 997 reply / unsolicited notification reporting the host
     /// terminal's color-palette theme mode (CSI 2031).
     HostTerminalThemeChanged(HostTerminalThemeMode),
+    /// Fork-only: the host terminal (WezTerm) reporting whether its OS
+    /// window is currently focused, via a private OSC `7777;ZWF;0|1`.
+    /// Each WezTerm window runs its own zellij server, so this is how a
+    /// background window's zellij learns it should dim its whole content.
+    /// `true` = window focused, `false` = window unfocused.
+    WindowFocusChanged(bool),
 }
 
 /// Retained alias for the pre-refactor type name used by other modules in
@@ -81,6 +87,10 @@ impl HostReply {
             static ref BG_RE: Regex = Regex::new(r"^11;(.*)$").unwrap();
             // OSC 4 ; N ; <color> — palette-register answer.
             static ref COLOR_REGISTER_RE: Regex = Regex::new(r"^4;(\d+);(.*)$").unwrap();
+            // Fork-only: OSC 7777 ; ZWF ; 0|1 — WezTerm window-focus signal
+            // ("Zellij Window Focus"). Private number well outside the OSC
+            // ranges any app or zellij feature uses.
+            static ref WINDOW_FOCUS_RE: Regex = Regex::new(r"^7777;ZWF;([01])$").unwrap();
         }
         let s = std::str::from_utf8(payload).ok()?;
         if let Some(caps) = BG_RE.captures(s) {
@@ -93,6 +103,9 @@ impl HostReply {
             let index: usize = caps[1].parse().ok()?;
             let color = caps[2].to_string();
             return Some(HostReply::ColorRegisters(vec![(index, color)]));
+        }
+        if let Some(caps) = WINDOW_FOCUS_RE.captures(s) {
+            return Some(HostReply::WindowFocusChanged(&caps[1] == "1"));
         }
         None
     }

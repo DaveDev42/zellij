@@ -2599,6 +2599,14 @@ pub(crate) fn route_thread_main(
                                 retry_queue
                             );
                         },
+                        ClientToServerMsg::WindowFocusChanged { focused } => {
+                            let _ = send_to_screen_or_retry_queue!(
+                                senders,
+                                ScreenInstruction::WindowFocusChange(client_id, focused),
+                                instruction,
+                                retry_queue
+                            );
+                        },
                         ClientToServerMsg::SubscribeToPaneRenders {
                             ref pane_ids,
                             ref scrollback,
