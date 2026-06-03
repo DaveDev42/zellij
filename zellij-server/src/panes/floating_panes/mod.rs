@@ -490,7 +490,15 @@ impl FloatingPanes {
                         pane_is_selectable,
                     )
                     .with_context(err_context)?;
-                if let PaneId::Plugin(..) = kind {
+                // Plugin panes always render per-client. Terminal panes normally
+                // broadcast a single render to all clients (fast path, below), but when
+                // inactive-pane dimming is enabled the dim is per-client, so we render
+                // them per-client here too.
+                let render_per_client = match kind {
+                    PaneId::Plugin(..) => true,
+                    PaneId::Terminal(..) => self.style.inactive_pane_hsb.is_some(),
+                };
+                if render_per_client {
                     pane_contents_and_ui
                         .render_pane_contents_for_client(*client_id)
                         .with_context(err_context)?;
@@ -507,9 +515,14 @@ impl FloatingPanes {
                     .with_context(err_context)?;
             }
             if let PaneId::Terminal(..) = kind {
-                pane_contents_and_ui
-                    .render_pane_contents_to_multiple_clients(connected_clients.iter().copied())
-                    .with_context(err_context)?;
+                // Fast path: when dimming is off, broadcast a single render to all
+                // clients. When dimming is on, the terminal contents were already
+                // rendered per-client inside the loop above (see render_per_client).
+                if self.style.inactive_pane_hsb.is_none() {
+                    pane_contents_and_ui
+                        .render_pane_contents_to_multiple_clients(connected_clients.iter().copied())
+                        .with_context(err_context)?;
+                }
             }
         }
         Ok(())

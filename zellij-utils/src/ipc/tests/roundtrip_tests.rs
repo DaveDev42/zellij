@@ -443,6 +443,8 @@ fn test_client_messages() {
                 theme_dir: Some(PathBuf::from("theme_dir")),
                 mouse_mode: Some(true),
                 pane_frames: Some(true),
+                // Not carried over the protobuf IPC boundary, so it roundtrips to None.
+                inactive_pane_hsb: None,
                 mirror_session: Some(true),
                 on_force_close: Some(OnForceClose::Quit),
                 scroll_buffer_size: Some(100000),

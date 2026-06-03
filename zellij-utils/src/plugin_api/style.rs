@@ -21,6 +21,8 @@ impl TryFrom<ProtobufStyle> for Style {
             colors: s,
             rounded_corners: protobuf_style.rounded_corners,
             hide_session_name: protobuf_style.hide_session_name,
+            // Server-side render concern; not carried over the plugin API boundary.
+            inactive_pane_hsb: None,
         })
     }
 }

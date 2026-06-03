@@ -1505,8 +1505,30 @@ impl MouseHandler {
             }
         }
         if let Some(clicked_pane) = tab.get_pane_id_at(point, true).with_context(err_context)? {
+            // Capture the previously-focused pane before focus_pane mutates the
+            // active-panes record, so we can mark both it and the newly-clicked
+            // pane for re-render below.
+            let previously_active_pane_id = tab.tiled_panes.get_active_pane_id(client_id);
             tab.tiled_panes.focus_pane(clicked_pane, client_id);
             tab.set_pane_active_at(clicked_pane);
+            // Mirror the keyboard MoveFocus path (tiled_panes::move_focus_*): force
+            // both the de-focused and newly-focused panes to re-emit their full
+            // viewport. Without this, content rendered with inactive_pane_hsb keeps
+            // its stale dim/undim state on a mouse-click focus change, since the
+            // dim is computed at render time and only emitted for panes whose
+            // should_render flag is set.
+            if let Some(old_id) = previously_active_pane_id {
+                if old_id != clicked_pane {
+                    if let Some(p) = tab.tiled_panes.get_pane_mut(old_id) {
+                        p.set_should_render(true);
+                        p.render_full_viewport();
+                    }
+                }
+            }
+            if let Some(p) = tab.tiled_panes.get_pane_mut(clicked_pane) {
+                p.set_should_render(true);
+                p.render_full_viewport();
+            }
             if tab.floating_panes.panes_are_visible() {
                 tab.hide_floating_panes();
                 tab.set_force_render();
