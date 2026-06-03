@@ -201,6 +201,7 @@ pub(crate) struct Tab {
     arrow_fonts: bool,
     styled_underlines: bool,
     osc8_hyperlinks: bool,
+    osc1337_config: crate::panes::grid::Osc1337Config,
     explicitly_disable_kitty_keyboard_protocol: bool,
     web_clients_allowed: bool,
     web_sharing: WebSharing,
@@ -450,6 +451,9 @@ pub trait Pane {
     fn drain_legacy_desktop_notifications(
         &mut self,
     ) -> Vec<crate::panes::grid::LegacyDesktopNotification> {
+        vec![]
+    }
+    fn drain_osc1337_commands(&mut self) -> Vec<crate::panes::grid::Osc1337Command> {
         vec![]
     }
     fn drain_osc7_cwd(&mut self) -> Option<std::path::PathBuf> {
@@ -751,6 +755,7 @@ impl Tab {
         arrow_fonts: bool,
         styled_underlines: bool,
         osc8_hyperlinks: bool,
+        osc1337_config: crate::panes::grid::Osc1337Config,
         explicitly_disable_kitty_keyboard_protocol: bool,
         default_editor: Option<PathBuf>,
         web_clients_allowed: bool,
@@ -857,6 +862,7 @@ impl Tab {
             arrow_fonts,
             styled_underlines,
             osc8_hyperlinks,
+            osc1337_config,
             explicitly_disable_kitty_keyboard_protocol,
             default_editor,
             web_clients_allowed,
@@ -2837,6 +2843,7 @@ impl Tab {
             let clipboard_update = terminal_output.drain_clipboard_update();
             let desktop_notifications = terminal_output.drain_desktop_notifications();
             let legacy_notifications = terminal_output.drain_legacy_desktop_notifications();
+            let osc1337_commands = terminal_output.drain_osc1337_commands();
             let osc7_cwd = terminal_output.drain_osc7_cwd();
             for message in messages_to_pty {
                 self.write_to_pane_id_without_preprocessing(message, PaneId::Terminal(pid))
@@ -2860,6 +2867,10 @@ impl Tab {
             }
             if !legacy_notifications.is_empty() {
                 self.forward_legacy_desktop_notifications(legacy_notifications)
+                    .with_context(err_context)?;
+            }
+            if !osc1337_commands.is_empty() {
+                self.forward_osc1337_commands(osc1337_commands)
                     .with_context(err_context)?;
             }
             if let Some(path) = osc7_cwd {
@@ -4877,6 +4888,53 @@ impl Tab {
             // fields, so the result is always valid UTF-8.
             let raw = String::from_utf8(bytes).with_context(err_context)?;
             output.add_post_vte_instruction_to_multiple_clients(all_clients.iter().copied(), &raw);
+        }
+        let serialized_output = output.serialize().with_context(err_context)?;
+        self.senders
+            .send_to_server(ServerInstruction::Render(Some(serialized_output)))
+            .with_context(err_context)?;
+        Ok(())
+    }
+    fn forward_osc1337_commands(
+        &self,
+        commands: Vec<crate::panes::grid::Osc1337Command>,
+    ) -> Result<()> {
+        let err_context = || "failed to forward OSC 1337 commands to host terminal".to_string();
+        let mut output = Output::default();
+        // Use all clients in the app — OSC 1337 sub-commands like
+        // SetMark, CurrentDir, SetUserVar are session-level metadata
+        // that the host terminal expects to see once per pane event,
+        // regardless of which tab is focused. Inline images (File=)
+        // also follow this scope to match the OSC 99 / legacy
+        // notification delivery policy: clients that are not viewing
+        // the originating tab receive the bytes too, but the host
+        // terminal renders them in its own buffer (not in a Zellij
+        // pane), so the duplication is benign.
+        let all_clients: HashSet<ClientId> = self
+            .connected_clients_in_app
+            .borrow()
+            .keys()
+            .copied()
+            .collect();
+        if all_clients.is_empty() {
+            return Ok(());
+        }
+        output.add_clients(&all_clients, self.link_handler.clone(), None);
+        let mut emitted = false;
+        for cmd in commands {
+            if !self.osc1337_config.allows(&cmd) {
+                continue;
+            }
+            let bytes = cmd.to_canonical_bytes();
+            let raw = match String::from_utf8(bytes) {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            output.add_post_vte_instruction_to_multiple_clients(all_clients.iter().copied(), &raw);
+            emitted = true;
+        }
+        if !emitted {
+            return Ok(());
         }
         let serialized_output = output.serialize().with_context(err_context)?;
         self.senders
