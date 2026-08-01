@@ -169,6 +169,18 @@ pub type PluginCache = Arc<Mutex<HashMap<PathBuf, Module>>>;
 
 pub struct WasmBridge {
     connected_clients: Arc<Mutex<Vec<ClientId>>>,
+    // Clients we have positively seen disconnect, so that their leftover plugin
+    // instances stop being fed events.
+    //
+    // Their instances deliberately stay in the plugin_map: add_client() rebuilds
+    // instances for a new client out of plugin_id metadata (run_plugin_of_plugin_id,
+    // size_of_plugin_id, ...) which is only reachable while at least one instance of
+    // that plugin_id exists, so dropping them would leave a reattached session with
+    // no status bar. This set is the complement of connected_clients rather than
+    // connected_clients itself because the first client of a session is never pushed
+    // there (FirstClientConnected does not go through add_client), while remove_client
+    // does run for it on both the graceful and the socket-death path.
+    disconnected_clients: HashSet<ClientId>,
     senders: ThreadSenders,
     plugin_dir: PathBuf,
     plugin_map: Arc<Mutex<PluginMap>>,
@@ -235,6 +247,7 @@ impl WasmBridge {
         ));
         WasmBridge {
             connected_clients,
+            disconnected_clients: HashSet::new(),
             senders,
             plugin_dir,
             plugin_map,
@@ -700,6 +713,9 @@ impl WasmBridge {
         if self.client_is_connected(&client_id) {
             return Ok(());
         }
+        // Client ids are monotonic within a server, but do not rely on it: an id that
+        // is connecting is by definition not disconnected.
+        self.disconnected_clients.remove(&client_id);
 
         let mut new_plugins = HashSet::new();
         for plugin_id in self.plugin_map.lock().unwrap().plugin_ids() {
@@ -901,10 +917,15 @@ impl WasmBridge {
             .running_plugins_and_subscriptions()
             .iter()
             .cloned()
-            .filter(|(plugin_id, _client_id, _running_plugin, _subscriptions)| {
-                !&self
-                    .cached_events_for_pending_plugins
-                    .contains_key(&plugin_id)
+            .filter(|(plugin_id, client_id, _running_plugin, _subscriptions)| {
+                // Skip instances belonging to a client that has gone away. Without this,
+                // every event the server handles is multiplied by the number of clients
+                // that ever disconnected, each multiplication being an interpreted-wasm
+                // call plus a clone of that instance's subscription set.
+                !self.disconnected_clients.contains(client_id)
+                    && !&self
+                        .cached_events_for_pending_plugins
+                        .contains_key(&plugin_id)
             })
             .collect();
 
@@ -1121,10 +1142,13 @@ impl WasmBridge {
             .running_plugins_and_subscriptions()
             .iter()
             .cloned()
-            .filter(|(plugin_id, _client_id, _running_plugin, _subscriptions)| {
-                !&self
-                    .cached_events_for_pending_plugins
-                    .contains_key(&plugin_id)
+            .filter(|(plugin_id, client_id, _running_plugin, _subscriptions)| {
+                // Same as update_plugins(): a broadcast pipe message must not fan out to
+                // instances whose client is gone.
+                !self.disconnected_clients.contains(client_id)
+                    && !&self
+                        .cached_events_for_pending_plugins
+                        .contains_key(&plugin_id)
             })
             .collect();
 
@@ -1251,6 +1275,7 @@ impl WasmBridge {
             .lock()
             .unwrap()
             .retain(|c| c != &client_id);
+        self.disconnected_clients.insert(client_id);
 
         // Remove client from cached pane render report
         if let Some(ref mut prev_report) = self.previous_pane_render_report {
